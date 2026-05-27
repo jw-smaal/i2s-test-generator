@@ -1,0 +1,8 @@
+build
+docs
+XcodeWorkspace.xcworkspace
+.DS_Store
+.git
+ram_report.txt
+rom_report.txt
+initlevels.txt

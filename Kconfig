@@ -1,0 +1,21 @@
+# Copyright (c) 2026 Jan-Willem Smaal <usenet@gispen.org>
+# SPDX-License-Identifier: Apache-2.0
+
+menu "I2S Signal Generator Options"
+
+config AUDIO_SAMPLE_RATE
+	int "Sample Rate (Hz)"
+	default 192000
+	help
+	  The sample rate of the generated I2S stream.
+
+config AUDIO_BIT_WIDTH
+	int "Sample Bit Width"
+	default 16
+	range 16 32
+	help
+	  The bit width of each audio sample (16 or 32).
+
+endmenu
+
+source "Kconfig.zephyr"

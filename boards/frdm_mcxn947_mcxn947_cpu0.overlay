@@ -1,0 +1,36 @@
+/*
+ * Copyright (c) 2026 Jan-Willem Smaal <usenet@gispen.org>
+ * SPDX-License-Identifier: Apache-2.0
+ * 
+ * Proven configuration for PCM5102A on FRDM-MCXN947
+ */
+
+&sai1 {
+	status = "okay";
+	pinctrl-0 = <&pinmux_sai1_custom>;
+	pinctrl-names = "default";
+	nxp,tx-channel = <1>; /* Bitmask: 1 = Channel 0 (TXD0) */
+	mclk-output;          /* MANDATORY for MCXN947 to enable internal clock generator */
+};
+
+&sai0 {
+	status = "disabled";
+};
+
+&flexcomm6 {
+	status = "disabled";
+};
+
+&pinctrl {
+	pinmux_sai1_custom: pinmux_sai1_custom {
+		group0 {
+			pinmux = <SAI1_TX_BCLK_PIO3_16>,   /* J1 Pin 1  - Bit Clock */
+				 <SAI1_TX_FS_PIO3_17>,     /* J1 Pin 11 - Frame Sync (LRCK) */
+				 <SAI1_TXD0_PIO3_20>,      /* J1 Pin 5  - Data Out */
+				 <SAI1_RX_BCLK_PIO3_18>;   /* J1 Pin 9  - Bit Clock (Swapped) */
+			drive-strength = "high";
+			slew-rate = "fast";
+			input-enable;
+		};
+	};
+};
