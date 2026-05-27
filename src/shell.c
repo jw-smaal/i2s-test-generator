@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2026 Jan-Willem Smaal <usenet@gispen.org>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /**
  * @file shell.c
  * @brief Shell Commands for I2S Signal Generator (Encapsulated)

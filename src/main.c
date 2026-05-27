@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2026 Jan-Willem Smaal <usenet@gispen.org>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /**
  * @file main.c
  * @brief I2S Signal Generator Main Loop and Driver Integration
