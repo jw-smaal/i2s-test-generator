@@ -52,7 +52,8 @@ void audio_stream_stop(void)
 {
 	if (stream_running) {
 		stream_running = false;
-		i2s_trigger(i2s_dev, I2S_DIR_TX, I2S_TRIGGER_STOP);
+		/* Use DROP to completely flush the TX queue and reset state */
+		i2s_trigger(i2s_dev, I2S_DIR_TX, I2S_TRIGGER_DROP);
 	}
 }
 

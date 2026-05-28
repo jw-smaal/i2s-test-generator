@@ -15,8 +15,12 @@
 #include <math.h>
 #include <string.h>
 
-void gen_init(struct gen_state *state, uint32_t sample_rate)
+int gen_init(struct gen_state *state, uint32_t sample_rate)
 {
+	if (sample_rate == 0) {
+		return -EINVAL;
+	}
+
 	memset(state, 0, sizeof(struct gen_state));
 	state->type = WAVE_SINE;
 	state->level = LEVEL_MAX;
@@ -24,7 +28,12 @@ void gen_init(struct gen_state *state, uint32_t sample_rate)
 	state->sample_rate = (float32_t)sample_rate;
 	state->inv_sample_rate = 1.0f / state->sample_rate;
 	state->scale = SCALE_MAX;
-	gen_set_frequency(state, state->freq);
+	
+	/* Initialize safe defaults for statics */
+	state->pink_indices = 1;
+	state->lr_swap_left_active = true;
+
+	return gen_set_frequency(state, state->freq);
 }
 
 void gen_set_type(struct gen_state *state, gen_type_t type)
@@ -35,8 +44,12 @@ void gen_set_type(struct gen_state *state, gen_type_t type)
 	}
 }
 
-void gen_set_frequency(struct gen_state *state, float freq_hz)
+int gen_set_frequency(struct gen_state *state, float freq_hz)
 {
+	if (freq_hz <= 0.0f || freq_hz > (state->sample_rate / 2.0f)) {
+		return -EINVAL;
+	}
+
 	state->freq = freq_hz;
 	/* Calculate phase increment in Q31 */
 	state->phase_inc = (q31_t)((state->freq * state->inv_sample_rate) * NCO_RANGE);
@@ -46,6 +59,8 @@ void gen_set_frequency(struct gen_state *state, float freq_hz)
 		state->burst_on_samples = (uint32_t)(state->burst_on_cycles * samples_per_cycle);
 		state->burst_off_samples = (uint32_t)(state->burst_off_cycles * samples_per_cycle);
 	}
+	
+	return 0;
 }
 
 void gen_set_level(struct gen_state *state, gen_level_t level)
@@ -70,13 +85,16 @@ void gen_set_phase_offset(struct gen_state *state, float phase_deg)
 	state->phase_offset = (q31_t)((phase_deg / DEGREES_PER_REV) * NCO_RANGE);
 }
 
-void gen_set_burst(struct gen_state *state, uint32_t on_cycles, uint32_t off_cycles)
+int gen_set_burst(struct gen_state *state, uint32_t on_cycles, uint32_t off_cycles)
 {
+	if (state->freq <= 0.0f) {
+		return -EINVAL;
+	}
 	state->burst_on_cycles = on_cycles;
 	state->burst_off_cycles = off_cycles;
 	state->burst_active = true;
 	state->burst_counter = 0;
-	gen_set_frequency(state, state->freq);
+	return gen_set_frequency(state, state->freq);
 }
 
 void gen_stop_burst(struct gen_state *state)
@@ -84,8 +102,15 @@ void gen_stop_burst(struct gen_state *state)
 	state->burst_active = false;
 }
 
-void gen_set_sweep(struct gen_state *state, float start_hz, float end_hz, uint32_t duration_ms)
+int gen_set_sweep(struct gen_state *state, float start_hz, float end_hz, uint32_t duration_ms)
 {
+	float32_t nyquist = state->sample_rate / 2.0f;
+	
+	if (start_hz <= 0.0f || end_hz <= 0.0f || duration_ms == 0 ||
+	    start_hz > nyquist || end_hz > nyquist) {
+		return -EINVAL;
+	}
+
 	state->sweep_start_freq = start_hz;
 	state->sweep_end_freq = end_hz;
 	state->sweep_current_freq = start_hz;
@@ -96,6 +121,8 @@ void gen_set_sweep(struct gen_state *state, float start_hz, float end_hz, uint32
 		state->sweep_multiplier = powf(end_hz / start_hz, 1.0f / (float32_t)state->sweep_samples_total);
 		state->sweep_active = true;
 	}
+	
+	return 0;
 }
 
 void gen_stop_sweep(struct gen_state *state)
@@ -130,9 +157,6 @@ static void fill_sine(struct gen_state *state, int16_t *buffer, uint32_t num_sam
 		q15_t angle_r = (q15_t)((state->phase_acc + state->phase_offset) >> PHASE_TO_Q15_SHIFT);
 		q15_t q_val_r = arm_sin_q15(angle_r);
 		
-		arm_scale_q15(&q_val_l, state->scale, 0, &q_val_l, 1);
-		arm_scale_q15(&q_val_r, state->scale, 0, &q_val_r, 1);
-		
 		if (state->burst_active) {
 			uint32_t period = state->burst_on_samples + state->burst_off_samples;
 			if (state->burst_counter >= state->burst_on_samples) {
@@ -157,7 +181,6 @@ static void fill_white_noise(struct gen_state *state, int16_t *buffer, uint32_t 
 	for (uint32_t i = 0; i < num_samples; i += 2) {
 		uint32_t r = sys_rand32_get();
 		q15_t q_val = (q15_t)((r & UINT16_MAX) - Q15_MID_OFFSET);
-		arm_scale_q15(&q_val, state->scale, 0, &q_val, 1);
 		buffer[i] = q_val;
 		buffer[i + 1] = q_val;
 	}
@@ -169,18 +192,26 @@ static void fill_pink_noise(struct gen_state *state, int16_t *buffer, uint32_t n
 
 	for (uint32_t i = 0; i < num_samples; i += 2) {
 		state->pink_indices++;
-		uint32_t i_tz = __builtin_ctz(state->pink_indices);
-		if (i_tz < PINK_ROWS) {
-			state->pink_running_sum -= state->pink_rows[i_tz];
-			uint32_t r = sys_rand32_get();
-			state->pink_rows[i_tz] = (q15_t)(((float32_t)((r & UINT16_MAX) - Q15_MID_OFFSET)) * pink_scale);
-			state->pink_running_sum += state->pink_rows[i_tz];
+		if (state->pink_indices == 0) {
+			state->pink_indices = 1; /* Prevent infinite loop logic failure */
 		}
 		
-		q15_t q_val = state->pink_running_sum;
-		arm_scale_q15(&q_val, state->scale, 0, &q_val, 1);
-		buffer[i] = q_val;
-		buffer[i + 1] = q_val;
+		uint32_t tz = 0;
+		uint32_t val = state->pink_indices;
+		while ((val & 1) == 0) {
+			tz++;
+			val >>= 1;
+		}
+
+		if (tz < PINK_ROWS) {
+			state->pink_running_sum -= state->pink_rows[tz];
+			uint32_t r = sys_rand32_get();
+			state->pink_rows[tz] = (q15_t)(((float32_t)((r & UINT16_MAX) - Q15_MID_OFFSET)) * pink_scale);
+			state->pink_running_sum += state->pink_rows[tz];
+		}
+		
+		buffer[i] = state->pink_running_sum;
+		buffer[i + 1] = state->pink_running_sum;
 	}
 }
 
@@ -197,7 +228,6 @@ static void fill_geometric(struct gen_state *state, int16_t *buffer, uint32_t nu
 			q31_t temp = (state->phase_acc < 0) ? ~state->phase_acc : state->phase_acc;
 			q_val = (q15_t)((temp >> TRIANGLE_Q31_SHIFT) - Q15_MID_OFFSET);
 		}
-		arm_scale_q15(&q_val, state->scale, 0, &q_val, 1);
 		buffer[i] = q_val;
 		buffer[i + 1] = q_val;
 		state->phase_acc += state->phase_inc;
@@ -214,7 +244,6 @@ static void fill_dirac(struct gen_state *state, int16_t *buffer, uint32_t num_sa
 		if (curr_phase < prev_phase) {
 			q_val = Q15_MAX;
 		}
-		arm_scale_q15(&q_val, state->scale, 0, &q_val, 1);
 		buffer[i] = q_val;
 		buffer[i + 1] = q_val;
 	}
@@ -227,57 +256,50 @@ static void fill_silence(int16_t *buffer, uint32_t num_samples)
 
 static void fill_lr_swap(struct gen_state *state, int16_t *buffer, uint32_t num_samples)
 {
-	static uint32_t channel_timer = 0;
-	static bool left_active = true;
-
 	for (uint32_t i = 0; i < num_samples; i += 2) {
 		update_sweep_phase(state);
 		q15_t angle = (q15_t)(state->phase_acc >> PHASE_TO_Q15_SHIFT);
 		q15_t q_val = arm_sin_q15(angle);
-		arm_scale_q15(&q_val, state->scale, 0, &q_val, 1);
-		buffer[i] = left_active ? q_val : 0;
-		buffer[i + 1] = left_active ? 0 : q_val;
+		buffer[i] = state->lr_swap_left_active ? q_val : 0;
+		buffer[i + 1] = state->lr_swap_left_active ? 0 : q_val;
 		state->phase_acc += state->phase_inc;
-		channel_timer++;
-		if (channel_timer >= (uint32_t)state->sample_rate) {
-			channel_timer = 0;
-			left_active = !left_active;
+		state->lr_swap_timer++;
+		if (state->lr_swap_timer >= (uint32_t)state->sample_rate) {
+			state->lr_swap_timer = 0;
+			state->lr_swap_left_active = !state->lr_swap_left_active;
 		}
 	}
 }
 
 static void fill_imd(struct gen_state *state, int16_t *buffer, uint32_t num_samples)
 {
-	static q31_t ph_low = 0, ph_high = 0;
 	const q31_t inc_low = (q31_t)((IMD_LOW_FREQ_HZ * state->inv_sample_rate) * NCO_RANGE);
 	const q31_t inc_high = (q31_t)((IMD_HIGH_FREQ_HZ * state->inv_sample_rate) * NCO_RANGE);
 
 	for (uint32_t i = 0; i < num_samples; i += 2) {
-		q15_t s_low = arm_sin_q15((q15_t)(ph_low >> PHASE_TO_Q15_SHIFT));
-		q15_t s_high = arm_sin_q15((q15_t)(ph_high >> PHASE_TO_Q15_SHIFT));
+		q15_t s_low = arm_sin_q15((q15_t)(state->imd_ph_low >> PHASE_TO_Q15_SHIFT));
+		q15_t s_high = arm_sin_q15((q15_t)(state->imd_ph_high >> PHASE_TO_Q15_SHIFT));
 		q31_t mixed = ((q31_t)s_low * IMD_LOW_RATIO_Q15) + ((q31_t)s_high * IMD_HIGH_RATIO_Q15);
 		q15_t q_val = (q15_t)(mixed >> IMD_MIX_Q31_SHIFT);
-		arm_scale_q15(&q_val, state->scale, 0, &q_val, 1);
 		buffer[i] = q_val;
 		buffer[i + 1] = q_val;
-		ph_low += inc_low;
-		ph_high += inc_high;
+		state->imd_ph_low += inc_low;
+		state->imd_ph_high += inc_high;
 	}
 }
 
 static void fill_jtest(struct gen_state *state, int16_t *buffer, uint32_t num_samples)
 {
 	for (uint32_t i = 0; i < num_samples; i += 2) {
-		static uint32_t sample_count = 0;
-		q15_t q_val = ((sample_count / JTEST_CARRIER_DIV) % 2 == 0) ? Q15_HALF_VAL : (q15_t)-Q15_HALF_VAL;
-		if ((sample_count / JTEST_MOD_DIV) % 2 == 0) {
+		q15_t q_val = ((state->jtest_sample_count / JTEST_CARRIER_DIV) % 2 == 0) ? Q15_HALF_VAL : (q15_t)-Q15_HALF_VAL;
+		if ((state->jtest_sample_count / JTEST_MOD_DIV) % 2 == 0) {
 			q_val |= Q15_LSB_BIT;
 		} else {
 			q_val &= ~Q15_LSB_BIT;
 		}
 		buffer[i] = q_val;
 		buffer[i + 1] = q_val;
-		sample_count++;
+		state->jtest_sample_count++;
 	}
 }
 
@@ -313,5 +335,10 @@ void gen_fill_buffer(struct gen_state *state, int16_t *buffer, uint32_t num_samp
 	case WAVE_JTEST:
 		fill_jtest(state, buffer, num_samples);
 		break;
+	}
+	
+	/* Apply bulk scaling if not at full scale, except for bit-perfect J-Test */
+	if (state->scale != SCALE_MAX && state->type != WAVE_JTEST && state->type != WAVE_SILENCE) {
+		arm_scale_q15(buffer, state->scale, 0, buffer, num_samples);
 	}
 }

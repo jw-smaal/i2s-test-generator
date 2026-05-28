@@ -116,14 +116,22 @@ struct gen_state {
 	uint32_t pink_indices;      /**< Running index for Voss-McCartney algorithm */
 	q15_t pink_rows[PINK_ROWS]; /**< State array for noise generators */
 	q15_t pink_running_sum;     /**< Running sum of the noise generators */
+
+	/* Diagnostic specific state */
+	uint32_t lr_swap_timer;     /**< Timer for L/R channel swap toggle */
+	bool lr_swap_left_active;   /**< State flag for L/R channel swap */
+	q31_t imd_ph_low;           /**< Phase accumulator for IMD 60Hz carrier */
+	q31_t imd_ph_high;          /**< Phase accumulator for IMD 7kHz modulation */
+	uint32_t jtest_sample_count;/**< Running sample counter for J-Test toggling */
 };
 
 /**
  * @brief Initialize the generator state.
  * @param state Pointer to the generator state structure.
  * @param sample_rate The system sample rate in Hz (e.g., 48000, 192000).
+ * @return 0 on success, or negative error code.
  */
-void gen_init(struct gen_state *state, uint32_t sample_rate);
+int gen_init(struct gen_state *state, uint32_t sample_rate);
 
 /**
  * @brief Set the active waveform type.
@@ -136,8 +144,9 @@ void gen_set_type(struct gen_state *state, gen_type_t type);
  * @brief Set the fundamental frequency.
  * @param state Pointer to the generator state structure.
  * @param freq_hz Frequency in Hertz.
+ * @return 0 on success, or negative error code if invalid bounds.
  */
-void gen_set_frequency(struct gen_state *state, float freq_hz);
+int gen_set_frequency(struct gen_state *state, float freq_hz);
 
 /**
  * @brief Set the calibrated output level.
@@ -158,8 +167,9 @@ void gen_set_phase_offset(struct gen_state *state, float phase_deg);
  * @param state Pointer to the generator state structure.
  * @param on_cycles Number of complete wave cycles the signal is active.
  * @param off_cycles Number of complete wave cycles the signal is muted.
+ * @return 0 on success, or negative error code if frequency is invalid.
  */
-void gen_set_burst(struct gen_state *state, uint32_t on_cycles, uint32_t off_cycles);
+int gen_set_burst(struct gen_state *state, uint32_t on_cycles, uint32_t off_cycles);
 
 /**
  * @brief Disable Tone Burst mode.
@@ -173,8 +183,9 @@ void gen_stop_burst(struct gen_state *state);
  * @param start_hz Starting frequency in Hertz.
  * @param end_hz Ending frequency in Hertz.
  * @param duration_ms Total duration of the sweep in milliseconds.
+ * @return 0 on success, or negative error code.
  */
-void gen_set_sweep(struct gen_state *state, float start_hz, float end_hz, uint32_t duration_ms);
+int gen_set_sweep(struct gen_state *state, float start_hz, float end_hz, uint32_t duration_ms);
 
 /**
  * @brief Stop the active frequency sweep.

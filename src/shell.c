@@ -57,7 +57,11 @@ static int cmd_gen_freq(const struct shell *sh, size_t argc, char **argv)
 		shell_error(sh, "Invalid frequency: %s", argv[1]);
 		return -EINVAL;
 	}
-	gen_set_frequency(get_gen_state(), freq);
+	int ret = gen_set_frequency(get_gen_state(), freq);
+	if (ret < 0) {
+		shell_error(sh, "Frequency out of bounds (max %.1f Hz)", (double)(get_gen_state()->sample_rate / 2.0f));
+		return ret;
+	}
 	shell_print(sh, "Frequency set to: %.2f Hz", (double)freq);
 	return 0;
 }
@@ -95,7 +99,11 @@ static int cmd_gen_burst_start(const struct shell *sh, size_t argc, char **argv)
 		shell_error(sh, "On-cycles must be > 0");
 		return -EINVAL;
 	}
-	gen_set_burst(get_gen_state(), on, off);
+	int ret = gen_set_burst(get_gen_state(), on, off);
+	if (ret < 0) {
+		shell_error(sh, "Cannot start burst: invalid base frequency");
+		return ret;
+	}
 	shell_print(sh, "Tone burst started: %u cycles on, %u cycles off", on, off);
 	return 0;
 }
@@ -113,12 +121,12 @@ static int cmd_gen_sweep_start(const struct shell *sh, size_t argc, char **argv)
 	float end_hz = atof(argv[2]);
 	uint32_t duration_ms = atoi(argv[3]);
 
-	if (start_hz <= 0.0f || end_hz <= 0.0f || duration_ms == 0) {
-		shell_error(sh, "Invalid sweep parameters");
-		return -EINVAL;
+	int ret = gen_set_sweep(get_gen_state(), start_hz, end_hz, duration_ms);
+	if (ret < 0) {
+		shell_error(sh, "Invalid sweep parameters or out of bounds (max %.1f Hz)", (double)(get_gen_state()->sample_rate / 2.0f));
+		return ret;
 	}
 
-	gen_set_sweep(get_gen_state(), start_hz, end_hz, duration_ms);
 	shell_print(sh, "Logarithmic sweep started: %.2f Hz -> %.2f Hz over %u ms",
 		    (double)start_hz, (double)end_hz, duration_ms);
 	return 0;
