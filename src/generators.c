@@ -226,11 +226,20 @@ static void fill_geometric(struct gen_state *state, int16_t *buffer, uint32_t nu
 		update_sweep_phase(state);
 		q15_t q_val = 0;
 		if (type == WAVE_SQUARE) {
-			q_val = (state->phase_acc >= 0) ? Q15_MAX : Q15_MIN;
+			if (state->phase_acc >= 0) {
+				q_val = Q15_MAX;
+			} else {
+				q_val = Q15_MIN;
+			}
 		} else if (type == WAVE_SAWTOOTH) {
 			q_val = (q15_t)(state->phase_acc >> PHASE_TO_Q15_SHIFT);
 		} else if (type == WAVE_TRIANGLE) {
-			q31_t temp = (state->phase_acc < 0) ? ~state->phase_acc : state->phase_acc;
+			q31_t temp;
+			if (state->phase_acc < 0) {
+				temp = ~state->phase_acc;
+			} else {
+				temp = state->phase_acc;
+			}
 			q_val = (q15_t)((temp >> TRIANGLE_Q31_SHIFT) - Q15_MID_OFFSET);
 		}
 		buffer[i] = q_val;
@@ -265,8 +274,13 @@ static void fill_lr_swap(struct gen_state *state, int16_t *buffer, uint32_t num_
 		update_sweep_phase(state);
 		q15_t angle = (q15_t)(state->phase_acc >> PHASE_TO_SINE_SHIFT);
 		q15_t q_val = arm_sin_q15(angle);
-		buffer[i] = state->lr_swap_left_active ? q_val : 0;
-		buffer[i + 1] = state->lr_swap_left_active ? 0 : q_val;
+		if (state->lr_swap_left_active) {
+			buffer[i] = q_val;
+			buffer[i + 1] = 0;
+		} else {
+			buffer[i] = 0;
+			buffer[i + 1] = q_val;
+		}
 		state->phase_acc += state->phase_inc;
 		state->lr_swap_timer++;
 		if (state->lr_swap_timer >= (uint32_t)state->sample_rate) {
@@ -296,7 +310,13 @@ static void fill_imd(struct gen_state *state, int16_t *buffer, uint32_t num_samp
 static void fill_jtest(struct gen_state *state, int16_t *buffer, uint32_t num_samples)
 {
 	for (uint32_t i = 0; i < num_samples; i += 2) {
-		q15_t q_val = ((state->jtest_sample_count / JTEST_CARRIER_DIV) % 2 == 0) ? Q15_HALF_VAL : (q15_t)-Q15_HALF_VAL;
+		q15_t q_val;
+		if ((state->jtest_sample_count / JTEST_CARRIER_DIV) % 2 == 0) {
+			q_val = Q15_HALF_VAL;
+		} else {
+			q_val = (q15_t)-Q15_HALF_VAL;
+		}
+		
 		if ((state->jtest_sample_count / JTEST_MOD_DIV) % 2 == 0) {
 			q_val |= Q15_LSB_BIT;
 		} else {

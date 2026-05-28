@@ -1,7 +1,7 @@
 I2S Digital Signal Generator for NXP MCXN947
 ###########################################
 
-A high-precision, bit-perfect digital signal generator for verifying DSP filters and audio signal chains. This project transforms a FRDM-MCXN947 into an I2S Master stimulus provider controlled via the Zephyr Shell, specifically calibrated for the PCM5102A DAC.
+A digital signal generator for verifying DSP filters and audio signal chains. This project configures a FRDM-MCXN947 as an I2S Master stimulus provider controlled via the Zephyr Shell, calibrated for the PCM5102A DAC.
 
 Hardware Setup
 **************
@@ -11,7 +11,7 @@ This project is designed to run on one FRDM-MCXN947 board, acting as the **Sourc
 Phase 1: Verification (Generator -> PCM5102A DAC)
 =================================================
 
-Use this setup to verify the generator is working by listening to the output or viewing it on an oscilloscope.
+Use this setup to verify the generator output via listening or an oscilloscope.
 
 +-----------------------+---------------+-----------------------+
 | FRDM-MCXN947 (SAI1)   | Signal        | PCM5102A DAC          |
@@ -32,7 +32,7 @@ Use this setup to verify the generator is working by listening to the output or 
 Phase 2: DSP Testing (Board A Generator -> Board B Filter)
 ==========================================================
 
-In this "Pro" configuration, Board A provides the digital stimulus to Board B. Board B processes the signal and outputs it to the DAC.
+In this configuration, Board A provides the digital stimulus to Board B. Board B processes the signal and outputs it to the DAC.
 
 **Inter-Board Wiring (I2S Bus):**
 
@@ -96,7 +96,7 @@ To stop the sweep and return to the fixed frequency:
 Phase & Burst Control (Sine Only)
 ================================
 
-Advanced diagnostic features for stereo imaging and transient response:
+Diagnostic features for stereo imaging and transient response:
 
 .. code-block:: bash
 
@@ -112,7 +112,7 @@ Advanced diagnostic features for stereo imaging and transient response:
 Waveform Types
 ==============
 
-*   ``sine``: Pure sine wave using CMSIS-DSP FastMath.
+*   ``sine``: Sine wave using CMSIS-DSP FastMath.
 *   ``white``: White noise with 0V DC offset.
 *   ``pink``: Pink noise (-3dB/octave) using the **Voss-McCartney** algorithm.
 *   ``square`` / ``triangle`` / ``saw``: Geometric shapes.
@@ -141,12 +141,12 @@ Standards & References
 Architecture
 ************
 
-This generator is built for maximum performance and modularity on Cortex-M33:
+This generator is implemented with the following design choices on Cortex-M33:
 
-*   **Encapsulated State**: All generator parameters (phase, frequency, sweep, burst, noise state) are encapsulated in a ``struct gen_state``. This avoids global variables and ensures the generator is re-entrant and easily testable.
-*   **Fixed-Point DSP**: Uses pure ``q15_t`` and ``q31_t`` arithmetic. No floats in the audio hot-path.
-*   **CMSIS-DSP**: Leverages ``arm_sin_q15`` and ``arm_scale_q15`` for bit-perfect, efficient signal generation.
-*   **Persistent Clocking**: Uses the MCX SAI RX interface to provide stable, continuous bit-clocks for the transmitter.
+*   **Encapsulated State**: Generator parameters (phase, frequency, sweep, burst, noise state) are encapsulated in a ``struct gen_state``.
+*   **Fixed-Point DSP**: Uses ``q15_t`` and ``q31_t`` arithmetic. Floating point operations are excluded from the audio hot-path.
+*   **CMSIS-DSP**: Employs ``arm_sin_q15`` and ``arm_scale_q15`` for signal generation.
+*   **Persistent Clocking**: Utilises the MCX SAI RX interface to provide stable, continuous bit-clocks for the transmitter.
 
 Project notes
 =============
