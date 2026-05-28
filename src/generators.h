@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026 Jan-Willem Smaal <usenet@gispen.org>
+ * Copyright 2026 Jan-Willem Smaal <usenet@gispen.org>
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -58,7 +58,8 @@ typedef enum {
 #define Q15_LSB_BIT         0x0001
 
 /* Shift constants for NCO to Q15 conversion */
-#define PHASE_TO_Q15_SHIFT  16            /* Shift 32-bit phase to 16-bit angle */
+#define PHASE_TO_SINE_SHIFT 17            /**< arm_sin_q15 expects 0x8000 to be 2*PI (a full cycle) */
+#define PHASE_TO_Q15_SHIFT  16            /**< Shift 32-bit phase to full 16-bit amplitude */
 #define TRIANGLE_Q31_SHIFT  15
 #define IMD_MIX_Q31_SHIFT   15
 

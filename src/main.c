@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026 Jan-Willem Smaal <usenet@gispen.org>
+ * Copyright 2026 Jan-Willem Smaal <usenet@gispen.org>
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -61,14 +61,40 @@ static void audio_thread(void *p1, void *p2, void *p3)
 {
 	int ret;
 	void *tx_buffer;
-	bool tx_started = false;
 
 	while (1) {
 		k_sem_take(&stream_start_sem, K_FOREVER);
 		
 		LOG_INF("Stream started");
-		tx_started = false;
 
+		/* 
+		 * Prime the DMA pump: On NXP MCUX SAI drivers, we MUST queue exactly 
+		 * one audio block BEFORE issuing the START command.
+		 */
+		ret = k_mem_slab_alloc(&tx_slab, &tx_buffer, K_NO_WAIT);
+		if (ret == 0) {
+			gen_fill_buffer(&g_state, (int16_t *)tx_buffer, SAMPLES_PER_FRAME * CHANNELS);
+			
+			/* Use a block-friendly timeout to prevent EAGAIN (-35) on fast CPUs */
+			ret = i2s_write(i2s_dev, tx_buffer, FRAME_SIZE);
+			if (ret < 0 && ret != -EAGAIN) {
+				LOG_ERR("I2S priming write failed: %d", ret);
+				k_mem_slab_free(&tx_slab, tx_buffer);
+				stream_running = false;
+				continue;
+			}
+			/* If EAGAIN, we just proceed to start, the buffer wasn't queued but we'll catch up */
+		}
+
+		/* Start the hardware now that the queue has data */
+		ret = i2s_trigger(i2s_dev, I2S_DIR_TX, I2S_TRIGGER_START);
+		if (ret < 0) {
+			LOG_ERR("I2S TX trigger start failed: %d", ret);
+			stream_running = false;
+			continue;
+		}
+
+		/* Main hot loop */
 		while (stream_running) {
 			ret = k_mem_slab_alloc(&tx_slab, &tx_buffer, K_NO_WAIT);
 			if (ret < 0) {
@@ -78,20 +104,17 @@ static void audio_thread(void *p1, void *p2, void *p3)
 
 			gen_fill_buffer(&g_state, (int16_t *)tx_buffer, SAMPLES_PER_FRAME * CHANNELS);
 
+			/* 
+			 * Real-time audio: If the queue is full (-EAGAIN), do not block or retry.
+			 * The time window has passed, so we simply drop this block and move on.
+			 */
 			ret = i2s_write(i2s_dev, tx_buffer, FRAME_SIZE);
 			if (ret < 0) {
-				LOG_ERR("I2S write failed: %d", ret);
 				k_mem_slab_free(&tx_slab, tx_buffer);
-				break;
-			}
-
-			if (!tx_started) {
-				ret = i2s_trigger(i2s_dev, I2S_DIR_TX, I2S_TRIGGER_START);
-				if (ret < 0) {
-					LOG_ERR("I2S TX trigger start failed: %d", ret);
+				if (ret != -EAGAIN) {
+					LOG_ERR("I2S write failed: %d", ret);
 					break;
 				}
-				tx_started = true;
 			}
 		}
 		

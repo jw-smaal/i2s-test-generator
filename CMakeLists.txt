@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Jan-Willem Smaal <usenet@gispen.org>
+# Copyright 2026 Jan-Willem Smaal <usenet@gispen.org>
 # SPDX-License-Identifier: Apache-2.0
 
 cmake_minimum_required(VERSION 3.20.0)

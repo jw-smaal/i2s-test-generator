@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026 Jan-Willem Smaal <usenet@gispen.org>
+ * Copyright 2026 Jan-Willem Smaal <usenet@gispen.org>
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -151,10 +151,10 @@ static void fill_sine(struct gen_state *state, int16_t *buffer, uint32_t num_sam
 	for (uint32_t i = 0; i < num_samples; i += 2) {
 		update_sweep_phase(state);
 
-		q15_t angle_l = (q15_t)(state->phase_acc >> PHASE_TO_Q15_SHIFT);
+		q15_t angle_l = (q15_t)(state->phase_acc >> PHASE_TO_SINE_SHIFT);
 		q15_t q_val_l = arm_sin_q15(angle_l);
 		
-		q15_t angle_r = (q15_t)((state->phase_acc + state->phase_offset) >> PHASE_TO_Q15_SHIFT);
+		q15_t angle_r = (q15_t)((state->phase_acc + state->phase_offset) >> PHASE_TO_SINE_SHIFT);
 		q15_t q_val_r = arm_sin_q15(angle_r);
 		
 		if (state->burst_active) {
@@ -188,7 +188,8 @@ static void fill_white_noise(struct gen_state *state, int16_t *buffer, uint32_t 
 
 static void fill_pink_noise(struct gen_state *state, int16_t *buffer, uint32_t num_samples)
 {
-	const float32_t pink_scale = 1.0f / (float32_t)PINK_ROWS;
+	/* Pre-compute Q15 scaling factor: (1.0 / PINK_ROWS) * 32768 */
+	const q15_t pink_scale_q15 = (q15_t)(32768.0f / (float32_t)PINK_ROWS);
 
 	for (uint32_t i = 0; i < num_samples; i += 2) {
 		state->pink_indices++;
@@ -206,7 +207,11 @@ static void fill_pink_noise(struct gen_state *state, int16_t *buffer, uint32_t n
 		if (tz < PINK_ROWS) {
 			state->pink_running_sum -= state->pink_rows[tz];
 			uint32_t r = sys_rand32_get();
-			state->pink_rows[tz] = (q15_t)(((float32_t)((r & UINT16_MAX) - Q15_MID_OFFSET)) * pink_scale);
+			
+			/* Convert random to signed Q15, then scale using 32-bit intermediate */
+			q15_t raw_noise = (q15_t)((r & UINT16_MAX) - Q15_MID_OFFSET);
+			state->pink_rows[tz] = (q15_t)(((int32_t)raw_noise * pink_scale_q15) >> 15);
+			
 			state->pink_running_sum += state->pink_rows[tz];
 		}
 		
@@ -258,7 +263,7 @@ static void fill_lr_swap(struct gen_state *state, int16_t *buffer, uint32_t num_
 {
 	for (uint32_t i = 0; i < num_samples; i += 2) {
 		update_sweep_phase(state);
-		q15_t angle = (q15_t)(state->phase_acc >> PHASE_TO_Q15_SHIFT);
+		q15_t angle = (q15_t)(state->phase_acc >> PHASE_TO_SINE_SHIFT);
 		q15_t q_val = arm_sin_q15(angle);
 		buffer[i] = state->lr_swap_left_active ? q_val : 0;
 		buffer[i + 1] = state->lr_swap_left_active ? 0 : q_val;
@@ -277,8 +282,8 @@ static void fill_imd(struct gen_state *state, int16_t *buffer, uint32_t num_samp
 	const q31_t inc_high = (q31_t)((IMD_HIGH_FREQ_HZ * state->inv_sample_rate) * NCO_RANGE);
 
 	for (uint32_t i = 0; i < num_samples; i += 2) {
-		q15_t s_low = arm_sin_q15((q15_t)(state->imd_ph_low >> PHASE_TO_Q15_SHIFT));
-		q15_t s_high = arm_sin_q15((q15_t)(state->imd_ph_high >> PHASE_TO_Q15_SHIFT));
+		q15_t s_low = arm_sin_q15((q15_t)(state->imd_ph_low >> PHASE_TO_SINE_SHIFT));
+		q15_t s_high = arm_sin_q15((q15_t)(state->imd_ph_high >> PHASE_TO_SINE_SHIFT));
 		q31_t mixed = ((q31_t)s_low * IMD_LOW_RATIO_Q15) + ((q31_t)s_high * IMD_HIGH_RATIO_Q15);
 		q15_t q_val = (q15_t)(mixed >> IMD_MIX_Q31_SHIFT);
 		buffer[i] = q_val;
