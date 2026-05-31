@@ -28,7 +28,8 @@ LOG_MODULE_REGISTER(i2s_gen, LOG_LEVEL_INF);
 K_MEM_SLAB_DEFINE_STATIC(tx_slab, FRAME_SIZE, TX_BLOCK_COUNT, 4);
 K_MEM_SLAB_DEFINE_STATIC(rx_slab, FRAME_SIZE, RX_BLOCK_COUNT, 4);
 
-static const struct device *const i2s_dev = DEVICE_DT_GET(DT_NODELABEL(sai1));
+//static const struct device *const i2s_dev = DEVICE_DT_GET(DT_NODELABEL(sai1));
+static const struct device *const i2s_dev = DEVICE_DT_GET(DT_ALIAS(i2s_tx));
 
 static struct gen_state g_state;
 static K_SEM_DEFINE(stream_start_sem, 0, 1);

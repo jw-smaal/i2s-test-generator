@@ -1,0 +1,47 @@
+/*
+ * Copyright 2026 Jan-Willem Smaal <usenet@gispen.org>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <nxp/mcx/MCXE247VLQ-pinctrl.h>
+
+/ {
+	aliases {
+		i2s-tx = &sai0;
+	};
+
+	midi0: midi0 {
+		status = "okay";
+		compatible = "midi1_serial";
+		uart = <&lpuart1>;
+	};
+};
+
+&sai0 {
+	status = "okay";
+	pinctrl-0 = <&pinmux_sai0_default>;
+	pinctrl-names = "default";
+	nxp,tx-channel = <1>; /* Channel 0 */
+	mclk-output;
+};
+
+/* MIDI/Console on MIKROEbus */
+&lpuart1 {
+	status = "okay";
+	current-speed = <31250>;
+};
+
+&pinctrl {
+	/* SAI0 (User Truth Mapping) */
+	pinmux_sai0_default: pinmux_sai0_default {
+		group0 {
+			pinmux = <SAI0_MCLK_PTD1>,    /* J1 Pin 9  */
+				 <SAI0_BCLK_PTA12>,   /* J1 Pin 7  */
+				 <SAI0_SYNC_PTA11>,   /* J1 Pin 5  */
+				 <SAI0_D3_PTA14>;     /* J1 Pin 15 */
+			drive-strength = "low";
+			slew-rate = "fast";
+			input-enable;
+		};
+	};
+};
