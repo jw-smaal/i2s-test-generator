@@ -21,26 +21,53 @@
 	status = "okay";
 	pinctrl-0 = <&pinmux_sai0_default>;
 	pinctrl-names = "default";
-	nxp,tx-channel = <1>; /* Channel 0 */
+	
+	/* REQUIRED properties from binding documentation */
+	nxp,tx-dma-channel = <7>;
+	nxp,rx-dma-channel = <6>;
+	
+	/* User Truth: J1 Pin 5 is PTE1 which is SAI0_D1 (Channel 1) */
+	nxp,tx-channel = <2>; 
+	
+	/* Select standard functional clock for SAI root */
+	clock-mux = <1>; 
+	
 	mclk-output;
 };
 
-/* MIDI/Console on MIKROEbus */
+/* MIDI/Console on mikroBUS UART (PTC8/PTC9) */
 &lpuart1 {
 	status = "okay";
 	current-speed = <31250>;
+	pinctrl-0 = <&pinmux_lpuart1_midi>;
+	pinctrl-names = "default";
 };
 
 &pinctrl {
-	/* SAI0 (User Truth Mapping) */
+	/* Standard pins with input-enable for RX */
+	pinmux_lpuart1_midi: pinmux_lpuart1_midi {
+		group0 {
+			pinmux = <LPUART1_RX_PTC8>,
+				 <LPUART1_TX_PTC9>;
+			drive-strength = "low";
+			slew-rate = "slow";
+			input-enable;
+		};
+	};
+
+	/* SAI0 (Verified User Truth Mapping) */
 	pinmux_sai0_default: pinmux_sai0_default {
 		group0 {
-			pinmux = <SAI0_MCLK_PTD1>,    /* J1 Pin 9  */
-				 <SAI0_BCLK_PTA12>,   /* J1 Pin 7  */
-				 <SAI0_SYNC_PTA11>,   /* J1 Pin 5  */
-				 <SAI0_D3_PTA14>;     /* J1 Pin 15 */
-			drive-strength = "low";
+			pinmux = <SAI0_BCLK_PTA12>,   /* J1 Pin 9  - Bit Clock */
+				 <SAI0_SYNC_PTA11>,   /* J1 Pin 7  - Frame Sync (LRCK) */
+				 <SAI0_D1_PTE1>;      /* J1 Pin 5  - Data Out (TX_DAT) */
+			drive-strength = "high";
 			slew-rate = "fast";
+		};
+		group1 {
+			pinmux = <SAI0_D3_PTA14>;     /* J1 Pin 15 - Data In (RX_DAT) */
+			drive-strength = "low";
+			slew-rate = "slow";
 			input-enable;
 		};
 	};
